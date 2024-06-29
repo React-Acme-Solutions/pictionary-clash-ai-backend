@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-unused-vars
 function handleError(error, req, res, next) {
   const errorObject = {
     status: 500,
