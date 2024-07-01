@@ -8,7 +8,7 @@ const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const Chance = require('chance');
 const chance = new Chance();
-const randomWords = require('random-words');
+const words = require('./words.json');
 require('dotenv').config();
 
 // middleware and handlers imports
@@ -28,10 +28,10 @@ const games = {};
 // SOCKET INTERACTIONS
 
 io.on('connection', (socket) => {
-  console.log('A user connected');
+  console.log(`User ${socket.id} connected`);
 
   socket.on('disconnect', () => {
-    console.log('User disconnected');
+    console.log(`User ${socket.id} disconnected`);
   });
 
   socket.on('create', () => {
@@ -120,6 +120,10 @@ io.on('connection', (socket) => {
     }
   });
 
+  function randomWord() {
+    return words[Math.floor(Math.random() * 50)];
+  }
+
   function startRound(gameId) {
     const game = games[gameId];
 
@@ -128,7 +132,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    game.word = randomWords().replace(/[^a-zA-Z]/g, '').toLowerCase();
+    game.word = randomWord().replace(/[^a-zA-Z]/g, '').toLowerCase();
   
     game.drawerIndex++;
     game.drawer = game.players[game.drawerIndex];
@@ -177,10 +181,10 @@ function proofOfLife(req, res) {
 // DATABASE
 
 // database connection
-const dbURI = process.env.MONGODB_URI || 'your-default-mongodb-uri';
-mongoose.connect(dbURI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log('MongoDB connected'))
-  .catch((err) => console.log('MongoDB connection error:', err));
+// const dbURI = process.env.MONGODB_URI || 'your-default-mongodb-uri';
+// mongoose.connect(dbURI, { useNewUrlParser: true, useUnifiedTopology: true })
+//   .then(() => console.log('MongoDB connected'))
+//   .catch((err) => console.log('MongoDB connection error:', err));
 
 // EXPORT
 
