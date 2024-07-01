@@ -8,7 +8,7 @@ const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const Chance = require('chance');
 const chance = new Chance();
-const randomWords = require('random-words');
+const words = require('./words.json');
 require('dotenv').config();
 
 // middleware and handlers imports
@@ -28,10 +28,10 @@ const games = {};
 // SOCKET INTERACTIONS
 
 io.on('connection', (socket) => {
-  console.log('A user connected');
+  console.log(`User ${socket.id} connected`);
 
   socket.on('disconnect', () => {
-    console.log('User disconnected');
+    console.log(`User ${socket.id} disconnected`);
   });
 
   socket.on('create', () => {
@@ -120,6 +120,10 @@ io.on('connection', (socket) => {
     }
   });
 
+  function randomWord() {
+    return words[Math.floor(Math.random() * 50)];
+  }
+
   function startRound(gameId) {
     const game = games[gameId];
 
@@ -128,29 +132,29 @@ io.on('connection', (socket) => {
       return;
     }
 
-    game.word = randomWords().replace(/[^a-zA-Z]/g, '').toLowerCase();
-  
+    game.word = randomWord().replace(/[^a-zA-Z]/g, '').toLowerCase();
+
     game.drawerIndex++;
     game.drawer = game.players[game.drawerIndex];
     game.finished = [];
-  
+
     io.to(gameId).emit('new-round', { drawer: game.drawer });
     io.to(game.drawer).emit('draw', game.word);
-  
+
     setTimeout(() => {
       startRound(gameId);
     }, 30000); // 30 seconds
   }
-  
+
   function endGame(gameId) {
     const game = games[gameId];
-  
+
     const winner = Object.keys(game.scores).reduce((a, b) => game.scores[a] > game.scores[b] ? a : b);
     io.to(gameId).emit('game-ended', winner);
     console.log(`Game ${gameId} ended. Winner: ${winner}`);
-  
+
     delete games[gameId];
-  }  
+  }
 });
 
 // API CALL
@@ -161,26 +165,28 @@ app.use(express.json());
 // middlerware implementation
 app.use(timestamp);
 app.use(logger);
-
+// routes
+app.get('/hey', proofOfLife);
 // handlers implementation
 app.use('*', handleNotFound);
 app.use(handleError);
 
-// routes
-app.get('/', proofOfLife);
+
 
 // returns 'Hello World' when the default route is visited as a proof of life
 function proofOfLife(req, res) {
+  console.log("route is on")
   res.status(200).send('Hello World');
+
 }
 
 // DATABASE
 
 // database connection
-const dbURI = process.env.MONGODB_URI || 'your-default-mongodb-uri';
-mongoose.connect(dbURI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log('MongoDB connected'))
-  .catch((err) => console.log('MongoDB connection error:', err));
+// const dbURI = process.env.MONGODB_URI || 'your-default-mongodb-uri';
+// mongoose.connect(dbURI, { useNewUrlParser: true, useUnifiedTopology: true })
+//   .then(() => console.log('MongoDB connected'))
+//   .catch((err) => console.log('MongoDB connection error:', err));
 
 // EXPORT
 
