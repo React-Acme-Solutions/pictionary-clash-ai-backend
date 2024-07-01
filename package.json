@@ -14,10 +14,12 @@
   "license": "MIT",
   "homepage": "https://github.com/Jed-Staley/express-server-template#readme",
   "dependencies": {
+    "chance": "^1.1.11",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "mongoose": "^8.4.4",
+    "random-words": "^2.0.1",
     "socket.io": "^4.7.5"
   }
 }
