@@ -162,14 +162,6 @@ io.on('connection', (socket) => {
 app.use(cors());
 app.use(express.json());
 
-// middlerware implementation
-app.use(timestamp);
-app.use(logger);
-
-// handlers implementation
-app.use('*', handleNotFound);
-app.use(handleError);
-
 // routes
 app.get('/', proofOfLife);
 
@@ -189,7 +181,7 @@ function proofOfLife(req, res) {
 // EXPORT
 
 function start(port, domain) {
-  app.listen(port, () => {
+  server.listen(port, () => {
     if (domain) {
       console.log(`Server is running at ${domain}:${port}`);
     } else {
