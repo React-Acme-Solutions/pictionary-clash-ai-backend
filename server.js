@@ -133,28 +133,28 @@ io.on('connection', (socket) => {
     }
 
     game.word = randomWord().replace(/[^a-zA-Z]/g, '').toLowerCase();
-  
+
     game.drawerIndex++;
     game.drawer = game.players[game.drawerIndex];
     game.finished = [];
-  
+
     io.to(gameId).emit('new-round', { drawer: game.drawer });
     io.to(game.drawer).emit('draw', game.word);
-  
+
     setTimeout(() => {
       startRound(gameId);
     }, 30000); // 30 seconds
   }
-  
+
   function endGame(gameId) {
     const game = games[gameId];
-  
+
     const winner = Object.keys(game.scores).reduce((a, b) => game.scores[a] > game.scores[b] ? a : b);
     io.to(gameId).emit('game-ended', winner);
     console.log(`Game ${gameId} ended. Winner: ${winner}`);
-  
+
     delete games[gameId];
-  }  
+  }
 });
 
 // API CALL
@@ -164,6 +164,14 @@ app.use(express.json());
 
 // routes
 app.get('/', proofOfLife);
+
+// middlerware implementation
+app.use(timestamp);
+app.use(logger);
+
+// handlers implementation
+app.use('*', handleNotFound);
+app.use(handleError);
 
 // returns 'Hello World' when the default route is visited as a proof of life
 function proofOfLife(req, res) {
