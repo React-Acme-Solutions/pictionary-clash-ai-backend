@@ -19,7 +19,12 @@ const handleError = require('./handlers/500.js');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
+});
 
 // GAMES
 
@@ -44,6 +49,7 @@ io.on('connection', (socket) => {
       finished: [],
       scores: {},
     };
+    games[gameId].scores[socket.id] = 0;
     socket.join(gameId);
     socket.emit('game-created', gameId);
     console.log(`Game created with ID: ${gameId}`);
@@ -102,10 +108,10 @@ io.on('connection', (socket) => {
             game.scores[socket.id] += 2;
             game.scores[game.drawer] += 1;
             game.finished.push(socket.id);
-            io.to(payload.ID).emit('correct-guess', { player: socket.id });
+            io.to(payload.ID).emit('correct-guess', socket.id);
             console.log(`Correct guess by ${socket.id} in game ${payload.ID}`);
           } else {
-            io.to(payload.ID).emit('incorrect-guess', { player: socket.id, newGuess });
+            io.to(payload.ID).emit('incorrect-guess', { player: socket.id, guess: newGuess });
             console.log(`Incorrect guess by ${socket.id} in game ${payload.ID}
             (Guessed "${newGuess}" instead of "${games[payload.ID].word}")`);
           }
@@ -138,7 +144,7 @@ io.on('connection', (socket) => {
     game.drawer = game.players[game.drawerIndex];
     game.finished = [];
 
-    io.to(gameId).emit('new-round', { drawer: game.drawer });
+    io.to(gameId).emit('new-round', game.drawer);
     io.to(game.drawer).emit('draw', game.word);
 
     setTimeout(() => {
