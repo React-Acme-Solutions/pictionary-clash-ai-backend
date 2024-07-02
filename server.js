@@ -55,7 +55,7 @@ io.on('connection', (socket) => {
         games[gameId].players.push(socket.id);
         games[gameId].scores[socket.id] = 0;
         socket.join(gameId);
-        io.to(gameId).emit('player-joined', socket.id);
+        io.to(gameId).emit('player-list', { list: games[gameId].players, newPlayer: socket.id });
         console.log(`User ${socket.id} joined game: ${gameId}`);
       } else {
         socket.emit('error', 'Player has already joined this game');
@@ -79,10 +79,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('canvas-update', (gameId, canvas) => {
-    if (games[gameId]) {
-      if (games[gameId].drawer === socket.id) {
-        io.to(gameId).emit('canvas-update', canvas);
+  socket.on('canvas-update', (payload) => {
+    if (games[payload.ID]) {
+      if (games[payload.ID].drawer === socket.id) {
+        io.to(payload.ID).emit('canvas-update', payload.canvas);
       } else {
         socket.emit('error', 'Only the drawer can update the canvas');
       }
@@ -91,23 +91,23 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('make-guess', (gameId, guess) => {
-    if (games[gameId]) {
-      if (games[gameId].drawer !== socket.id) {
-        if (!games[gameId].finished.includes(socket.id)) {
-          const game = games[gameId];
-          const newGuess = guess.replace(/[^a-zA-Z]/g, '').toLowerCase();
+  socket.on('make-guess', (payload) => {
+    if (games[payload.ID]) {
+      if (games[payload.ID].drawer !== socket.id) {
+        if (!games[payload.ID].finished.includes(socket.id)) {
+          const game = games[payload.ID];
+          const newGuess = payload.guess.replace(/[^a-zA-Z]/g, '').toLowerCase();
 
           if (newGuess === game.word) {
             game.scores[socket.id] += 2;
             game.scores[game.drawer] += 1;
             game.finished.push(socket.id);
-            io.to(gameId).emit('correct-guess', { player: socket.id });
-            console.log(`Correct guess by ${socket.id} in game ${gameId}`);
+            io.to(payload.ID).emit('correct-guess', { player: socket.id });
+            console.log(`Correct guess by ${socket.id} in game ${payload.ID}`);
           } else {
-            io.to(gameId).emit('incorrect-guess', { player: socket.id, newGuess });
-            console.log(`Incorrect guess by ${socket.id} in game ${gameId}
-            (Guessed "${newGuess}" instead of "${games[gameId].word}")`);
+            io.to(payload.ID).emit('incorrect-guess', { player: socket.id, newGuess });
+            console.log(`Incorrect guess by ${socket.id} in game ${payload.ID}
+            (Guessed "${newGuess}" instead of "${games[payload.ID].word}")`);
           }
         } else {
           socket.emit('error', 'User has already guessed correctly');
@@ -162,22 +162,20 @@ io.on('connection', (socket) => {
 app.use(cors());
 app.use(express.json());
 
+// routes
+app.get('/', proofOfLife);
+
 // middlerware implementation
 app.use(timestamp);
 app.use(logger);
-// routes
-app.get('/hey', proofOfLife);
+
 // handlers implementation
 app.use('*', handleNotFound);
 app.use(handleError);
 
-
-
 // returns 'Hello World' when the default route is visited as a proof of life
 function proofOfLife(req, res) {
-  console.log("route is on")
   res.status(200).send('Hello World');
-
 }
 
 // DATABASE
@@ -191,7 +189,7 @@ function proofOfLife(req, res) {
 // EXPORT
 
 function start(port, domain) {
-  app.listen(port, () => {
+  server.listen(port, () => {
     if (domain) {
       console.log(`Server is running at ${domain}:${port}`);
     } else {
