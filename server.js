@@ -73,7 +73,7 @@ io.on('connection', (socket) => {
 
   socket.on('start-game', (gameId) => {
     if (games[gameId]) {
-      if (games[gameId].host === socket.id) {
+      if (games[gameId].players[0] === socket.id) {
         startRound(gameId);
         io.to(gameId).emit('game-started');
         console.log(`Game ${gameId} started by host ${socket.id}`);
