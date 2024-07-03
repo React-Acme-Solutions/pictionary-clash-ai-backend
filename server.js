@@ -10,6 +10,13 @@ const Chance = require('chance');
 const chance = new Chance();
 const words = require('./words.json');
 require('dotenv').config();
+const fs = require('fs');
+const fetch = require('node-fetch');
+const multer = require('multer');
+
+// env variables
+const API_URL = process.env.API_URL;
+const API_KEY = process.env.API_KEY;
 
 // middleware and handlers imports
 const logger = require('./middleware/logger.js');
@@ -26,12 +33,13 @@ const io = new Server(server, {
   }
 });
 
-// GAMES
+// Set up multer for file uploads
+const upload = multer({ dest: 'uploads/' });
 
+// GAMES
 const games = {};
 
 // SOCKET INTERACTIONS
-
 io.on('connection', (socket) => {
   console.log(`User ${socket.id} connected`);
 
@@ -48,6 +56,7 @@ io.on('connection', (socket) => {
       word: null,
       finished: [],
       scores: {},
+      canvas: null,
     };
     games[gameId].scores[socket.id] = 0;
     socket.join(gameId);
@@ -88,7 +97,9 @@ io.on('connection', (socket) => {
   socket.on('canvas-update', (payload) => {
     if (games[payload.ID]) {
       if (games[payload.ID].drawer === socket.id) {
+        games[payload.ID].canvas = payload.canvas;
         io.to(payload.ID).emit('canvas-update', payload.canvas);
+        console.log(`Canvas updated for game ${payload.ID}`);
       } else {
         socket.emit('error', 'Only the drawer can update the canvas');
       }
@@ -139,6 +150,7 @@ io.on('connection', (socket) => {
     }
 
     game.word = randomWord().replace(/[^a-zA-Z]/g, '').toLowerCase();
+    console.log(`New word for game ${gameId}: ${game.word}`);
 
     game.drawerIndex++;
     game.drawer = game.players[game.drawerIndex];
@@ -159,19 +171,66 @@ io.on('connection', (socket) => {
     io.to(gameId).emit('game-ended', winner);
     console.log(`Game ${gameId} ended. Winner: ${winner}`);
 
+    // Emit an event to prompt the frontend to send the PNG
+    io.to(gameId).emit('send-canvas', gameId);
+
     delete games[gameId];
   }
+
+  async function sendImageToAI(imagePath) {
+    const imageData = fs.readFileSync(imagePath);
+
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Authorization': `Bearer ${API_KEY}`
+      },
+      body: imageData
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      console.log('AI Response:', result);
+      // Do something with the AI response if needed
+    } else {
+      console.log('Failed to send image to AI API:', response.statusText);
+    }
+  }
+
+  // Endpoint to handle file upload
+  app.post('/upload', upload.single('file'), async (req, res) => {
+    console.log(`NEW REQUEST
+    METHOD: ${req.method}
+    PATH: ${req.path}
+    TIME: ${new Date().toString()}
+    QUERY: ${JSON.stringify(req.query)}`);
+
+    if (!req.file) {
+      console.error('No file uploaded');
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    try {
+      const filePath = req.file.path;
+      console.log(`File uploaded: ${filePath}`);
+      await sendImageToAI(filePath);
+      res.status(200).json({ message: 'File uploaded and processed successfully' });
+    } catch (error) {
+      console.error('Error processing file:', error);
+      res.status(500).json({ error: 'Failed to process file' });
+    }
+  });
 });
 
 // API CALL
-
 app.use(cors());
 app.use(express.json());
 
 // routes
 app.get('/', proofOfLife);
 
-// middlerware implementation
+// middleware implementation
 app.use(timestamp);
 app.use(logger);
 
@@ -185,7 +244,6 @@ function proofOfLife(req, res) {
 }
 
 // DATABASE
-
 // database connection
 // const dbURI = process.env.MONGODB_URI || 'your-default-mongodb-uri';
 // mongoose.connect(dbURI, { useNewUrlParser: true, useUnifiedTopology: true })
@@ -193,7 +251,6 @@ function proofOfLife(req, res) {
 //   .catch((err) => console.log('MongoDB connection error:', err));
 
 // EXPORT
-
 function start(port, domain) {
   server.listen(port, () => {
     if (domain) {
@@ -204,4 +261,4 @@ function start(port, domain) {
   });
 }
 
-module.exports = {app, start};
+module.exports = { app, start };
