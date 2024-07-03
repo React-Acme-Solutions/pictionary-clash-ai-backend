@@ -5,7 +5,6 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
-const mongoose = require('mongoose');
 const Chance = require('chance');
 const chance = new Chance();
 const words = require('./words.json');
@@ -13,6 +12,9 @@ require('dotenv').config();
 const fs = require('fs');
 const fetch = require('node-fetch');
 const multer = require('multer');
+const path = require('path');
+const OpenAI = require('openai');
+const openai = new OpenAI();
 
 // env variables
 const API_URL = process.env.API_URL;
@@ -33,11 +35,28 @@ const io = new Server(server, {
   }
 });
 
-// Set up multer for file uploads
-const upload = multer({ dest: 'uploads/' });
+// Set up multer for file uploads with custom filename
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + '.png');
+  }
+});
+const upload = multer({ storage: storage });
 
 // GAMES
 const games = {};
+
+// API CALL
+app.use(cors());
+app.use(express.json());
+
+// middleware implementation
+app.use(timestamp);
+app.use(logger);
 
 // SOCKET INTERACTIONS
 io.on('connection', (socket) => {
@@ -161,7 +180,7 @@ io.on('connection', (socket) => {
 
     setTimeout(() => {
       startRound(gameId);
-    }, 30000); // 30 seconds
+    }, 5000); // 30 seconds
   }
 
   function endGame(gameId) {
@@ -172,67 +191,131 @@ io.on('connection', (socket) => {
     console.log(`Game ${gameId} ended. Winner: ${winner}`);
 
     // Emit an event to prompt the frontend to send the PNG
-    io.to(gameId).emit('send-canvas', gameId);
+    io.to(game.players[game.players.length - 1]).emit('send-canvas', gameId);
 
     delete games[gameId];
   }
 
-  async function sendImageToAI(imagePath) {
-    const imageData = fs.readFileSync(imagePath);
-
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        'Authorization': `Bearer ${API_KEY}`
-      },
-      body: imageData
-    });
-
-    if (response.ok) {
-      const result = await response.json();
-      console.log('AI Response:', result);
-      // Do something with the AI response if needed
-    } else {
-      console.log('Failed to send image to AI API:', response.statusText);
-    }
-  }
-
   // Endpoint to handle file upload
-  app.post('/upload', upload.single('file'), async (req, res) => {
-    console.log(`NEW REQUEST
-    METHOD: ${req.method}
-    PATH: ${req.path}
-    TIME: ${new Date().toString()}
-    QUERY: ${JSON.stringify(req.query)}`);
-
-    if (!req.file) {
-      console.error('No file uploaded');
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    try {
-      const filePath = req.file.path;
-      console.log(`File uploaded: ${filePath}`);
-      await sendImageToAI(filePath);
-      res.status(200).json({ message: 'File uploaded and processed successfully' });
-    } catch (error) {
-      console.error('Error processing file:', error);
-      res.status(500).json({ error: 'Failed to process file' });
-    }
-  });
 });
 
-// API CALL
-app.use(cors());
-app.use(express.json());
+app.post('/upload', upload.single('file'), async (req, res) => {
+  console.log(`NEW REQUEST
+  METHOD: ${req.method}
+  PATH: ${req.path}
+  TIME: ${new Date().toString()}
+  QUERY: ${JSON.stringify(req.query)}`);
 
-// routes
-app.get('/', proofOfLife);
+  if (!req.file) {
+    console.error('No file uploaded');
+    return res.status(400).json({ error: 'No file uploaded' }); 
+  }
 
-// middleware implementation
-app.use(timestamp);
-app.use(logger);
+  try {
+    const filePath = req.file.path;
+    console.log(`File uploaded: ${filePath}`);
+
+    // Log the file details for debugging
+    console.log('File details:', req.file);
+
+    await sendImageToAI(filePath);
+    res.status(200).json({ message: 'File uploaded and processed successfully' });
+  } catch (error) {
+    console.error('Error processing file:', error);
+    res.status(500).json({ error: 'Failed to process file' });
+  }
+});
+
+// async function sendImageToAI(imagePath) {
+//   try {
+//     const imageData = fs.readFileSync(imagePath);
+//     console.log(API_URL);
+//     const response = await fetch(API_URL, {
+//       method: 'POST',
+//       headers: {
+//         'Authorization': `Bearer ${process.env.API_KEY}`,
+//         'Content-Type': 'application/json'
+//       },
+//       body: JSON.stringify({
+//         model: 'gpt-4-vision-preview',
+//         messages: [
+//           {
+//             role: 'system',
+//             content: 'You are an AI that describes the content of images.'
+//           },
+//           {
+//             role: 'user',
+//             content: {
+//               type: 'text',
+//               text: 'Describe the content of this image:'
+//             }
+//           },
+//           {
+//             role: 'user',
+//             content: {
+//               type: 'image_url',
+//               image_url: {
+//                 url: `file://${imagePath}`
+//               }
+//             }
+//           }
+//         ]
+//       })
+//     });
+//     console.log('reponse:', response);
+//     if (!response.ok) {
+//       throw new Error(`Failed to send image to AI API: ${response.status} ${response.statusText}`);
+//     }
+
+//     const result = await response.json();
+//     console.log('AI Response:', result.choices[0].message.content);
+//   } catch (error) {
+//     console.error('Error in sendImageToAI:', error.message);
+//     throw error;
+//   }
+// }
+async function imageToBase64(imagePath) {
+  try {
+    console.log('path', imagePath);
+    const imageBuffer = fs.readFileSync(imagePath);
+    const base64Image = imageBuffer.toString('base64');
+    const mimeType = 'image/png'; // Adjust if your image is not PNG
+    return `data:${mimeType};base64,${base64Image}`;
+  } catch (error) {
+    console.error('Error reading file:', error);
+    throw error;
+  }
+}
+
+async function sendImageToAI(imagePath) {
+  try {
+    const base64Image = await imageToBase64(imagePath);
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4-turbo',
+      messages: [
+        {
+          role: 'user',
+          content: 'What\'s in this image?'
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'What\'s in this image? Describe it in one word if possible. Do not include context or color, just describe the dominant subject in one word.' },
+            {
+              type: 'image_url',
+              image_url: {
+                url: base64Image,
+              },
+            },
+          ],
+        },
+      ],
+    });
+    console.log(response.choices[0]);
+  } catch (error) {
+    console.error('Error processing file:', error);
+  }
+}
 
 // handlers implementation
 app.use('*', handleNotFound);
