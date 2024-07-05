@@ -16,10 +16,6 @@ const path = require('path');
 const OpenAI = require('openai');
 const openai = new OpenAI();
 
-// env variables
-const API_URL = process.env.API_URL;
-const API_KEY = process.env.API_KEY;
-
 // middleware and handlers imports
 const logger = require('./middleware/logger.js');
 const timestamp = require('./middleware/timestamp.js');
@@ -70,6 +66,7 @@ io.on('connection', (socket) => {
     const gameId = chance.guid();
     games[gameId] = {
       players: [socket.id],
+      names: {},
       drawer: null,
       drawerIndex: -1,
       word: null,
@@ -97,6 +94,11 @@ io.on('connection', (socket) => {
     } else {
       socket.emit('error', 'Invalid game ID');
     }
+  });
+
+  socket.on('name-declare', (payload) => {
+    games[payload.ID].names[socket.id] = payload.name;
+    io.to(games[payload.ID]).emit('names', games[payload.ID].names);
   });
 
   socket.on('start-game', (gameId) => {
@@ -163,6 +165,10 @@ io.on('connection', (socket) => {
   function startRound(gameId) {
     const game = games[gameId];
 
+    if (game.word) {
+      io.to(gameId).emit('word-reveal', game.word);
+    }
+
     if (game.drawerIndex === game.players.length - 1) {
       endGame(gameId);
       return;
@@ -180,7 +186,7 @@ io.on('connection', (socket) => {
 
     setTimeout(() => {
       startRound(gameId);
-    }, 5000); // 30 seconds
+    }, 10000); // 30 seconds
   }
 
   function endGame(gameId) {
@@ -226,54 +232,6 @@ app.post('/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// async function sendImageToAI(imagePath) {
-//   try {
-//     const imageData = fs.readFileSync(imagePath);
-//     console.log(API_URL);
-//     const response = await fetch(API_URL, {
-//       method: 'POST',
-//       headers: {
-//         'Authorization': `Bearer ${process.env.API_KEY}`,
-//         'Content-Type': 'application/json'
-//       },
-//       body: JSON.stringify({
-//         model: 'gpt-4-vision-preview',
-//         messages: [
-//           {
-//             role: 'system',
-//             content: 'You are an AI that describes the content of images.'
-//           },
-//           {
-//             role: 'user',
-//             content: {
-//               type: 'text',
-//               text: 'Describe the content of this image:'
-//             }
-//           },
-//           {
-//             role: 'user',
-//             content: {
-//               type: 'image_url',
-//               image_url: {
-//                 url: `file://${imagePath}`
-//               }
-//             }
-//           }
-//         ]
-//       })
-//     });
-//     console.log('reponse:', response);
-//     if (!response.ok) {
-//       throw new Error(`Failed to send image to AI API: ${response.status} ${response.statusText}`);
-//     }
-
-//     const result = await response.json();
-//     console.log('AI Response:', result.choices[0].message.content);
-//   } catch (error) {
-//     console.error('Error in sendImageToAI:', error.message);
-//     throw error;
-//   }
-// }
 async function imageToBase64(imagePath) {
   try {
     console.log('path', imagePath);
@@ -300,7 +258,7 @@ async function sendImageToAI(imagePath) {
         {
           role: 'user',
           content: [
-            { type: 'text', text: 'What\'s in this image? Describe it in one word if possible. Do not include context or color, just describe the dominant subject in one word.' },
+            { type: 'text', text: 'What\'s in this image? Describe it in one word. Do not include context or color, just describe the dominant subject in one word. You may use two words if necessary (for example, cotton candy is two words but both are needed to refer to one object. Do not use two words just to add more description, such as "blue car". That should just be "car").' },
             {
               type: 'image_url',
               image_url: {
@@ -312,6 +270,7 @@ async function sendImageToAI(imagePath) {
       ],
     });
     console.log(response.choices[0]);
+    io.emit('ai-guess', response.choices[0]);
   } catch (error) {
     console.error('Error processing file:', error);
   }
