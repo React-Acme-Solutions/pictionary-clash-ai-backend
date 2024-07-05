@@ -107,9 +107,11 @@ io.on('connection', (socket) => {
   socket.on('start-game', (gameId) => {
     if (games[gameId]) {
       if (games[gameId].players[0] === socket.id) {
-        startRound(gameId);
-        io.to(gameId).emit('game-started');
         console.log(`Game ${gameId} started by host ${socket.id}`);
+        io.to(gameId).emit('game-started');
+        setTimeout(() => {
+          startRound(gameId);
+        }, 5000);
       } else {
         socket.emit('error', 'Only the host can start the game');
       }
@@ -169,6 +171,7 @@ io.on('connection', (socket) => {
     const game = games[gameId];
 
     if (game.word) {
+      io.to(game.players[0]).emit('send-canvas', gameId);
       io.to(gameId).emit('word-reveal', game.word);
     }
 
@@ -177,19 +180,21 @@ io.on('connection', (socket) => {
       return;
     }
 
-    game.word = randomWord().replace(/[^a-zA-Z]/g, '').toLowerCase();
-    console.log(`New word for game ${gameId}: ${game.word}`);
-
-    game.drawerIndex++;
-    game.drawer = game.players[game.drawerIndex];
-    game.finished = [];
-
-    io.to(gameId).emit('new-round', game.drawer);
-    io.to(game.drawer).emit('draw', game.word);
-
     setTimeout(() => {
-      startRound(gameId);
-    }, 10000); // 30 seconds
+      game.word = randomWord().replace(/[^a-zA-Z]/g, '').toLowerCase();
+      console.log(`New word for game ${gameId}: ${game.word}`);
+
+      game.drawerIndex++;
+      game.drawer = game.players[game.drawerIndex];
+      game.finished = [];
+
+      io.to(gameId).emit('new-round', game.drawer);
+      io.to(game.drawer).emit('draw', game.word);
+
+      setTimeout(() => {
+        startRound(gameId);
+      }, 20000); // Round duration
+    }, 3000);
   }
 
   function endGame(gameId) {
@@ -198,9 +203,6 @@ io.on('connection', (socket) => {
     const winner = Object.keys(game.scores).reduce((a, b) => game.scores[a] > game.scores[b] ? a : b);
     io.to(gameId).emit('game-ended', winner);
     console.log(`Game ${gameId} ended. Winner: ${winner}`);
-
-    // Emit an event to prompt the frontend to send the PNG
-    io.to(game.players[game.players.length - 1]).emit('send-canvas', gameId);
 
     delete games[gameId];
   }
@@ -272,8 +274,8 @@ async function sendImageToAI(imagePath) {
         },
       ],
     });
-    console.log(response.choices[0]);
-    io.emit('ai-guess', response.choices[0]);
+    console.log('AI:', response.choices[0].message.content);
+    io.emit('ai-guess', response.choices[0].message.content);
   } catch (error) {
     console.error('Error processing file:', error);
   }
