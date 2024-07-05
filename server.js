@@ -97,6 +97,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('name-declare', (payload) => {
+    console.log('payload.ID:', payload.ID);
+    console.log('payload.name:', payload.name);
+    console.log('names:', games[payload.ID].names);
     games[payload.ID].names[socket.id] = payload.name;
     io.to(games[payload.ID]).emit('names', games[payload.ID].names);
   });
